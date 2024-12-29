@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Film Öneri Sistemi</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/csss.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <h1>Film Öneri Sistemi</h1>
+
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <div class="form-container">
+        <form method="POST">
+            <div class="center">
+                <label id="p1" class="shape" for="username">Kullanıcı Adı:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <br>
+
+            <div class="center">
+                <label id="p2" class="shape" for="movies">Seçtiğiniz Filmler:</label>
+                {% for i in range(5) %}
+                    <select name="movies" required>
+                        {% for movie in movies %}
+                            <option value="{{ movie['movieId'] }}">
+                                {{ movie['title'] }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <label id="p3" class="shape" for="rating_{{ i }}">Puan:</label>
+                    <input type="number" id="rating_{{ i }}" name="ratings" min="1" max="5" required><br><br>
+                {% endfor %}
+            </div>
+
+            <button type="submit">Gönder</button>
+        </form>
+    </div>
+
+    <hr>
+    <h4 id="p4">Model Performansı</h4>
+    <p class="rmse">RMSE: {{ rmse }}</p>
+    <p class="mae">MAE: {{ mae }}</p>
+    <hr>
+
+    {% if users %}
+        <h2 id="p5">Kullanıcı Önerileri</h2>
+        {% for user, data in users.items() %}
+            <h3 id ="p6">{{ user }}</h3>
+            <h4 id="p7">Seçilen Filmler:</h4>
+            <ul>
+                {% for movie in data["movies"] %}
+                    <li id ="p8">{{ movie }}</li>
+                {% endfor %}
+            </ul>
+            <h4 id="p9">Öneriler:</h4>
+            <ul>
+                {% for movie in data["recommendations"] %}
+                    <li class="recommendation">{{ movie }}</li>
+                {% endfor %}
+            </ul> 
+            <hr>
+        {% endfor %}
+    {% endif %}
+</body>
+</html>
