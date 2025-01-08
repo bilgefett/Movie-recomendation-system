@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import KMeans
 import zipfile
 
 def load_data():
@@ -42,7 +43,24 @@ def cosine_similarity_sample(movies_df, cosine_sim, num_movies=10):
     similarity_df = similarity_df.round(2)  # İki basamağa yuvarlama
     return similarity_df
 
-if __name__ == "__main__":
+# Kullanıcı-film matrisi oluşturma
+def get_user_movie_matrix(ratings_df):
+    user_movie_matrix = ratings_df.pivot_table(index='userId', columns='movieId', values='rating').fillna(0)
+    return user_movie_matrix
+
+# Kullanıcıları KMeans algoritması ile kümelere ayırma
+def cluster_users(ratings_df, n_clusters=5):
+    user_movie_matrix = get_user_movie_matrix(ratings_df)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    user_movie_matrix['cluster'] = kmeans.fit_predict(user_movie_matrix)
+    return user_movie_matrix
+
+def cluster_users_and_print(ratings_df):
+    user_clusters = cluster_users(ratings_df)
+    print(user_clusters.head())
+    return user_clusters
+
+if _name_ == "_main_":
     # Veriyi yükle
     ratings_df, movies_df, cosine_sim, _ = load_data()
     
@@ -55,3 +73,6 @@ if __name__ == "__main__":
 
     # CSV dosyasına kaydet
     similarity_df.to_csv("cosine_similarity_sample.csv", index=True)
+
+    # Kullanıcıları kümelere ayır ve sonuçları yazdır
+    user_clusters = cluster_users_and_print(ratings_df)
