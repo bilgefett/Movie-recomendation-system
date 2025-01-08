@@ -1,87 +1,78 @@
-from flask import Flask, render_template, request, session
 import pandas as pd
-from surprise import Dataset, Reader, SVD
-from surprise.model_selection import train_test_split
-from surprise import accuracy
-from helperr import load_data, cluster_users
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import KMeans
+import zipfile
 
-app = Flask(_name_)
-app.secret_key = "your_secret_key"  # Session için bir anahtar
+def load_data():
+    # Veriyi yükle ve çıkart
+    file_name = "C:/Users/asus/Downloads/ml-latest-small.zip"
+    with zipfile.ZipFile(file_name, 'r') as z:
+        z.extractall()
 
-# Veriyi yükle
-ratings_df, movies_df, cosine_sim, movie_id_to_index = load_data()
+    # Veri çerçevelerini oku
+    ratings_df = pd.read_csv("ml-latest-small/ratings.csv")
+    movies_df = pd.read_csv("ml-latest-small/movies.csv")
 
-# Surprise modelini eğitme işlevi
-def train_model(ratings_df):
-    reader = Reader(line_format='user item rating timestamp', sep=',')
-    data = Dataset.load_from_df(ratings_df[['userId', 'movieId', 'rating']], reader)
-    trainset, testset = train_test_split(data, test_size=0.2)
-    model = SVD()
-    model.fit(trainset)
-    predictions = model.test(testset)
-    rmse = accuracy.rmse(predictions)
-    mae = accuracy.mae(predictions)
-    return model, rmse, mae
+    # Filmlerin türlerini işleyelim
+    movies_df['genre'] = movies_df['genres'].apply(lambda x: x.split('|')[0])
 
-# Modeli eğit
-model, rmse, mae = train_model(ratings_df)
+    # Film özellikleri (burada sadece 'genre' kullanılıyor)
+    movie_features = movies_df[['genre']]
+    
+    # Cosine similarity hesapla (film türlerine dayalı)
+    cosine_sim = cosine_similarity(pd.get_dummies(movie_features))
 
-# Cosine similarity'ye dayalı öneri fonksiyonu
-def get_cosine_recommendations(movie_id, cosine_sim, movies_df):
-    idx = movie_id_to_index[movie_id]
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    movie_indices = [i[0] for i in sim_scores[1:11]]  # En benzer 10 film
-    recommended_movies = movies_df.iloc[movie_indices]
-    return recommended_movies['title'].tolist()
+    # Film ID'leri ile indeksleri eşleştir
+    movie_id_to_index = {movie_id: idx for idx, movie_id in enumerate(movies_df['movieId'])}
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    global ratings_df, model, rmse, mae
+    return ratings_df, movies_df, cosine_sim, movie_id_to_index
 
-    if "users" not in session:
-        session["users"] = {}
+def cosine_similarity_sample(movies_df, cosine_sim, num_movies=10):
+    # Örnek tablo: İlk 'num_movies' filmi kullanıyoruz
+    example_movies = movies_df.iloc[:num_movies]['title'].tolist()  # İlk 10 film
+    cosine_sim_sample = cosine_sim[:num_movies, :num_movies]
 
-    if request.method == "POST":
-        user_name = request.form.get("username")
-        user_movies = request.form.getlist("movies")
-        user_ratings = request.form.getlist("ratings")
+    # Tabloyu DataFrame olarak oluştur
+    similarity_df = pd.DataFrame(
+        cosine_sim_sample,
+        index=example_movies,
+        columns=example_movies
+    )
 
-        if not user_name:
-            return render_template("indexx.html", movies=movies_df.to_dict(orient="records"), error="Kullanıcı adınızı girin.", rmse=rmse, mae=mae)
+    # Cosine similarity değerlerini 0-1 arasında formatlamak için
+    similarity_df = similarity_df.round(2)  # İki basamağa yuvarlama
+    return similarity_df
 
-        if user_name not in session["users"]:
-            session["users"][user_name] = {"movies": [], "ratings": [], "recommendations": []}
+# Kullanıcı-film matrisi oluşturma
+def get_user_movie_matrix(ratings_df):
+    user_movie_matrix = ratings_df.pivot_table(index='userId', columns='movieId', values='rating').fillna(0)
+    return user_movie_matrix
 
-        session["users"][user_name]["movies"].extend(user_movies)
-        session["users"][user_name]["ratings"].extend(user_ratings)
+# Kullanıcıları KMeans algoritması ile kümelere ayırma
+def cluster_users(ratings_df, n_clusters=5):
+    user_movie_matrix = get_user_movie_matrix(ratings_df)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    user_movie_matrix['cluster'] = kmeans.fit_predict(user_movie_matrix)
+    return user_movie_matrix
 
-        new_data = pd.DataFrame({
-            'userId': [user_name] * len(user_movies),
-            'movieId': user_movies,
-            'rating': user_ratings
-        })
-
-        ratings_df = pd.concat([ratings_df, new_data], ignore_index=True)
-
-        # Yeni veriyle modeli yeniden eğit
-        model, rmse, mae = train_model(ratings_df)
-
-        all_movies = movies_df['movieId'].tolist()
-        # Kullanıcının izlediği filmleri int türüne dönüştürerek kontrol et
-        recommendable_movies = [int(movie) for movie in all_movies if int(movie) not in [int(user_movie) for user_movie in session["users"][user_name]["movies"]]]
-
-        recommendations = []
-        for movie_id in recommendable_movies:
-            pred = model.predict(user_name, movie_id)
-            recommendations.append((movie_id, pred.est))
-
-        recommendations = sorted(recommendations, key=lambda x: x[1], reverse=True)[:10]
-        session["users"][user_name]["recommendations"] = [movies_df[movies_df['movieId'] == rec[0]]["title"].values[0] for rec in recommendations]
-
-        return render_template("indexx.html", movies=movies_df.to_dict(orient="records"), users=session["users"], error=None, rmse=rmse, mae=mae)
-
-    return render_template("indexx.html", movies=movies_df.to_dict(orient="records"), users=session.get("users", {}), error=None, rmse=rmse, mae=mae)
+def cluster_users_and_print(ratings_df):
+    user_clusters = cluster_users(ratings_df)
+    print(user_clusters.head())
+    return user_clusters
 
 if _name_ == "_main_":
-    app.run(debug=True)
+    # Veriyi yükle
+    ratings_df, movies_df, cosine_sim, _ = load_data()
+    
+    # 10 filmle cosine similarity tablosu oluştur
+    similarity_df = cosine_similarity_sample(movies_df, cosine_sim, num_movies=10)
+
+    # Tabloyu ekrana yazdır
+    print("Cosine Similarity Örnek Tablosu (10 Film):")
+    print(similarity_df)
+
+    # CSV dosyasına kaydet
+    similarity_df.to_csv("cosine_similarity_sample.csv", index=True)
+
+    # Kullanıcıları kümelere ayır ve sonuçları yazdır
+    user_clusters = cluster_users_and_print(ratings_df)
