@@ -3,9 +3,9 @@ import pandas as pd
 from surprise import Dataset, Reader, SVD
 from surprise.model_selection import train_test_split
 from surprise import accuracy
-from helperr import load_data
+from helperr import load_data, cluster_users
 
-app = Flask(__name__)
+app = Flask(_name_)
 app.secret_key = "your_secret_key"  # Session için bir anahtar
 
 # Veriyi yükle
@@ -83,5 +83,5 @@ def index():
 
     return render_template("indexx.html", movies=movies_df.to_dict(orient="records"), users=session.get("users", {}), error=None, rmse=rmse, mae=mae)
 
-if __name__ == "__main__":
-    app.run(debug=True) 
+if _name_ == "_main_":
+    app.run(debug=True)
